@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Kerala GST – PDF Utility</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<style>
+body{font-family:Segoe UI,Arial;margin:0;background:#fff;}
+.header{background:#0054a6;color:white;padding:20px;text-align:center;}
+.header h1{color:#b89b1d;margin:0;}
+.container{max-width:900px;margin:auto;padding:30px;}
+.tabs{display:flex;justify-content:center;margin-bottom:20px;}
+.tab{padding:12px 30px;border:2px solid #0054a6;cursor:pointer;font-weight:bold;}
+.tab.active{background:#0054a6;color:white;}
+.card{background:#eaf3fb;padding:30px;border-radius:10px;}
+.drop{border:3px dashed #0054a6;padding:40px;text-align:center;background:white;border-radius:10px;cursor:pointer;}
+.file-item{background:white;padding:10px;margin:8px 0;border-left:5px solid #0054a6;}
+button{background:#0054a6;color:white;border:none;padding:12px 25px;border-radius:6px;margin-top:15px;cursor:pointer;}
+input,select{padding:10px;width:100%;margin-top:8px;}
+.hidden{display:none;}
+footer{text-align:center;margin-top:40px;color:#0054a6;}
+</style>
+</head>
+
+<body>
+<div class="header">
+<h1>KERALA GST</h1>
+<div>PDF Utility – For Audit, Intelligence & Legal Use</div>
+</div>
+
+<div class="container">
+<div class="tabs">
+<div class="tab active" onclick="show('merge')">Merge</div>
+<div class="tab" onclick="show('split')">Split</div>
+</div>
+
+<div class="card">
+
+<!-- MERGE -->
+<div id="mergeBox">
+<div class="drop" onclick="mergeInput.click()">Select PDFs</div>
+<input type="file" id="mergeInput" multiple accept="application/pdf" hidden>
+<div id="mergeList"></div>
+<button onclick="mergePDF()">Merge PDFs</button>
+<div id="mergeStatus"></div>
+</div>
+
+<!-- SPLIT -->
+<div id="splitBox" class="hidden">
+<div class="drop" onclick="splitInput.click()">Select ONE PDF</div>
+<input type="file" id="splitInput" accept="application/pdf" hidden>
+<div id="splitList"></div>
+
+<select id="splitMode">
+<option value="single">Each Page</option>
+<option value="every">Every N Pages</option>
+<option value="odd">Odd & Even</option>
+</select>
+<input type="number" id="nPages" value="1">
+
+<hr>
+<label><input type="checkbox" id="auditMode"> Use Audit File Numbering</label>
+<div id="auditPanel" class="hidden">
+<input placeholder="Financial Year (2025-26)" id="fy" value="2025-26">
+<input placeholder="Case Code (TRV-45)" id="caseCode">
+<input placeholder="Start No (1)" id="startNo" value="1">
+</div>
+
+<button onclick="splitPDF()">Split PDF</button>
+<div id="splitStatus"></div>
+</div>
+
+</div>
+<footer>Files never leave this computer • Kerala SGST</footer>
+</div>
+
+<script>
+let mergeFiles=[],splitDoc=null;
+
+mergeInput.onchange=()=>{mergeFiles=[...mergeInput.files];mergeList.innerHTML=mergeFiles.map(f=>"<div class='file-item'>"+f.name+"</div>").join("");}
+
+async function mergePDF(){
+ const merged=await PDFLib.PDFDocument.create();
+ for(const f of mergeFiles){
+  const pdf=await PDFLib.PDFDocument.load(await f.arrayBuffer());
+  const pages=await merged.copyPages(pdf,pdf.getPageIndices());
+  pages.forEach(p=>merged.addPage(p));
+ }
+ download(await merged.save(),"KERALA_GST_MERGED.pdf");
+}
+
+splitInput.onchange=async()=>{
+ splitDoc=await PDFLib.PDFDocument.load(await splitInput.files[0].arrayBuffer());
+ splitList.innerHTML="<div class='file-item'>"+splitInput.files[0].name+" ("+splitDoc.getPageCount()+" pages)</div>";
+}
+
+auditMode.onchange=()=>auditPanel.classList.toggle("hidden",!auditMode.checked);
+
+async function splitPDF(){
+ const zip=new JSZip();
+ let num=parseInt(startNo.value)||1;
+ const fyv=fy.value,cc=caseCode.value||"CASE";
+ const total=splitDoc.getPageCount();
+ const prefix=(i)=>auditMode.checked?`AUD-${fyv}-${cc}-${String(i).padStart(3,"0")}.pdf`:`part_${i}.pdf`;
+
+ if(splitMode.value=="single"){
+  for(let i=0;i<total;i++){
+   const p=await PDFLib.PDFDocument.create();
+   p.addPage((await p.copyPages(splitDoc,[i]))[0]);
+   zip.file(prefix(num++),await p.save());
+  }
+ }
+
+ if(splitMode.value=="every"){
+  const n=parseInt(nPages.value)||1;
+  for(let i=0;i<total;i+=n){
+   const p=await PDFLib.PDFDocument.create();
+   for(let j=i;j<Math.min(i+n,total);j++)p.addPage((await p.copyPages(splitDoc,[j]))[0]);
+   zip.file(prefix(num++),await p.save());
+  }
+ }
+
+ if(splitMode.value=="odd"){
+  const o=await PDFLib.PDFDocument.create(),e=await PDFLib.PDFDocument.create();
+  for(let i=0;i<total;i++){
+   const [pg]=await o.copyPages(splitDoc,[i]);
+   (i%2==0?o:e).addPage(pg);
+  }
+  zip.file(prefix(num++),await o.save());
+  zip.file(prefix(num++),await e.save());
+ }
+
+ const blob=await zip.generateAsync({type:"blob"});
+ const a=document.createElement("a");
+ a.href=URL.createObjectURL(blob);
+ a.download="KERALA_GST_SPLIT.zip";
+ a.click();
+}
+
+function download(b,n){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([b]));a.download=n;a.click();}
+function show(x){mergeBox.classList.toggle("hidden",x!="merge");splitBox.classList.toggle("hidden",x!="split");document.querySelectorAll(".tab").forEach((t,i)=>t.classList.toggle("active",(x=="merge"&&i==0)||(x=="split"&&i==1)));}
+</script>
+</body>
+</html>
