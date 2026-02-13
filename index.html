@@ -78,19 +78,25 @@ footer{text-align:center;margin-top:40px;color:#0054a6;}
 </div>
 
 <script>
-let mergeFiles=[],splitDoc=null;
-
-mergeInput.onchange=()=>{mergeFiles=[...mergeInput.files];mergeList.innerHTML=mergeFiles.map(f=>"<div class='file-item'>"+f.name+"</div>").join("");}
-
 async function mergePDF(){
- const merged=await PDFLib.PDFDocument.create();
+ const merged = await PDFLib.PDFDocument.create();
+
  for(const f of mergeFiles){
-  const pdf=await PDFLib.PDFDocument.load(await f.arrayBuffer());
-  const pages=await merged.copyPages(pdf,pdf.getPageIndices());
-  pages.forEach(p=>merged.addPage(p));
+   const pdf = await PDFLib.PDFDocument.load(await f.arrayBuffer());
+   const pages = await merged.copyPages(pdf, pdf.getPageIndices());
+   pages.forEach(p => merged.addPage(p));
  }
- download(await merged.save(),"KERALA_GST_MERGED.pdf");
+
+ // 🔥 THIS is the important fix for large PDF size
+ const pdfBytes = await merged.save({
+   useObjectStreams: true,
+   addDefaultPage: false,
+   compress: true
+ });
+
+ download(pdfBytes, "KERALA_GST_MERGED.pdf");
 }
+
 
 splitInput.onchange=async()=>{
  splitDoc=await PDFLib.PDFDocument.load(await splitInput.files[0].arrayBuffer());
@@ -145,3 +151,4 @@ function show(x){mergeBox.classList.toggle("hidden",x!="merge");splitBox.classLi
 </script>
 </body>
 </html>
+
