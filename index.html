@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>Kerala GST – PDF Utility</title>
@@ -8,147 +8,168 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <style>
-body{font-family:Segoe UI,Arial;margin:0;background:#fff;}
-.header{background:#0054a6;color:white;padding:20px;text-align:center;}
-.header h1{color:#b89b1d;margin:0;}
-.container{max-width:900px;margin:auto;padding:30px;}
-.tabs{display:flex;justify-content:center;margin-bottom:20px;}
-.tab{padding:12px 30px;border:2px solid #0054a6;cursor:pointer;font-weight:bold;}
-.tab.active{background:#0054a6;color:white;}
-.card{background:#eaf3fb;padding:30px;border-radius:10px;}
-.drop{border:3px dashed #0054a6;padding:40px;text-align:center;background:white;border-radius:10px;cursor:pointer;}
-.file-item{background:white;padding:10px;margin:8px 0;border-left:5px solid #0054a6;}
-button{background:#0054a6;color:white;border:none;padding:12px 25px;border-radius:6px;margin-top:15px;cursor:pointer;}
-input,select{padding:10px;width:100%;margin-top:8px;}
-.hidden{display:none;}
-footer{text-align:center;margin-top:40px;color:#0054a6;}
+body {
+    font-family: Arial, sans-serif;
+    background: #f4f6f8;
+    margin: 0;
+    padding: 0;
+}
+.container {
+    max-width: 900px;
+    margin: 30px auto;
+    background: #fff;
+    padding: 25px;
+    border-radius: 8px;
+}
+h1 {
+    text-align: center;
+    color: #003366;
+}
+.section {
+    margin-top: 25px;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+}
+label {
+    font-weight: bold;
+}
+input, button {
+    margin-top: 8px;
+}
+button {
+    padding: 8px 14px;
+    cursor: pointer;
+}
+.log {
+    margin-top: 10px;
+    font-size: 14px;
+    color: #333;
+}
+.footer {
+    margin-top: 25px;
+    font-size: 12px;
+    color: #666;
+    text-align: center;
+}
 </style>
 </head>
 
 <body>
-<div class="header">
-<h1>KERALA GST</h1>
-<div>PDF Utility – For Audit, Intelligence & Legal Use</div>
-</div>
-
 <div class="container">
-<div class="tabs">
-<div class="tab active" onclick="show('merge')">Merge</div>
-<div class="tab" onclick="show('split')">Split</div>
+<h1>Kerala GST – PDF Utility</h1>
+
+<div class="section">
+<label>Select PDF files (password-protected allowed):</label><br>
+<input type="file" id="pdfFiles" accept="application/pdf" multiple>
 </div>
 
-<div class="card">
-
-<!-- MERGE -->
-<div id="mergeBox">
-<div class="drop" onclick="mergeInput.click()">Select PDFs</div>
-<input type="file" id="mergeInput" multiple accept="application/pdf" hidden>
-<div id="mergeList"></div>
-<button onclick="mergePDF()">Merge PDFs</button>
-<div id="mergeStatus"></div>
+<div class="section">
+<label>PDF Password (leave blank if none):</label><br>
+<input type="password" id="pdfPassword" placeholder="Enter password once">
 </div>
 
-<!-- SPLIT -->
-<div id="splitBox" class="hidden">
-<div class="drop" onclick="splitInput.click()">Select ONE PDF</div>
-<input type="file" id="splitInput" accept="application/pdf" hidden>
-<div id="splitList"></div>
-
-<select id="splitMode">
-<option value="single">Each Page</option>
-<option value="every">Every N Pages</option>
-<option value="odd">Odd & Even</option>
-</select>
-<input type="number" id="nPages" value="1">
-
-<hr>
-<label><input type="checkbox" id="auditMode"> Use Audit File Numbering</label>
-<div id="auditPanel" class="hidden">
-<input placeholder="Financial Year (2025-26)" id="fy" value="2025-26">
-<input placeholder="Case Code (TRV-45)" id="caseCode">
-<input placeholder="Start No (1)" id="startNo" value="1">
+<div class="section">
+<button onclick="mergePDFs()">Merge PDFs</button>
+<button onclick="splitPDF()">Split PDFs</button>
 </div>
 
-<button onclick="splitPDF()">Split PDF</button>
-<div id="splitStatus"></div>
-</div>
+<div class="log" id="log"></div>
 
+<div class="footer">
+All processing happens locally in your browser. No files are uploaded.
 </div>
-<footer>Files never leave this computer • Kerala SGST</footer>
 </div>
 
 <script>
-async function mergePDF(){
- const merged = await PDFLib.PDFDocument.create();
+const { PDFDocument } = PDFLib;
 
- for(const f of mergeFiles){
-   const pdf = await PDFLib.PDFDocument.load(await f.arrayBuffer());
-   const pages = await merged.copyPages(pdf, pdf.getPageIndices());
-   pages.forEach(p => merged.addPage(p));
- }
-
- // 🔥 THIS is the important fix for large PDF size
- const pdfBytes = await merged.save({
-   useObjectStreams: true,
-   addDefaultPage: false,
-   compress: true
- });
-
- download(pdfBytes, "KERALA_GST_MERGED.pdf");
+function log(msg) {
+    document.getElementById("log").innerHTML += msg + "<br>";
 }
 
-
-splitInput.onchange=async()=>{
- splitDoc=await PDFLib.PDFDocument.load(await splitInput.files[0].arrayBuffer());
- splitList.innerHTML="<div class='file-item'>"+splitInput.files[0].name+" ("+splitDoc.getPageCount()+" pages)</div>";
+async function loadPdf(file, password) {
+    const bytes = await file.arrayBuffer();
+    try {
+        return await PDFDocument.load(bytes, password ? { password } : {});
+    } catch (e) {
+        throw new Error("Wrong password or corrupted file: " + file.name);
+    }
 }
 
-auditMode.onchange=()=>auditPanel.classList.toggle("hidden",!auditMode.checked);
+async function mergePDFs() {
+    document.getElementById("log").innerHTML = "";
+    const files = document.getElementById("pdfFiles").files;
+    const password = document.getElementById("pdfPassword").value;
 
-async function splitPDF(){
- const zip=new JSZip();
- let num=parseInt(startNo.value)||1;
- const fyv=fy.value,cc=caseCode.value||"CASE";
- const total=splitDoc.getPageCount();
- const prefix=(i)=>auditMode.checked?`AUD-${fyv}-${cc}-${String(i).padStart(3,"0")}.pdf`:`part_${i}.pdf`;
+    if (!files.length) {
+        alert("Select at least one PDF");
+        return;
+    }
 
- if(splitMode.value=="single"){
-  for(let i=0;i<total;i++){
-   const p=await PDFLib.PDFDocument.create();
-   p.addPage((await p.copyPages(splitDoc,[i]))[0]);
-   zip.file(prefix(num++),await p.save());
-  }
- }
+    const mergedPdf = await PDFDocument.create();
 
- if(splitMode.value=="every"){
-  const n=parseInt(nPages.value)||1;
-  for(let i=0;i<total;i+=n){
-   const p=await PDFLib.PDFDocument.create();
-   for(let j=i;j<Math.min(i+n,total);j++)p.addPage((await p.copyPages(splitDoc,[j]))[0]);
-   zip.file(prefix(num++),await p.save());
-  }
- }
+    try {
+        for (let i = 0; i < files.length; i++) {
+            log("Reading: " + files[i].name);
+            const pdf = await loadPdf(files[i], password);
+            const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+            pages.forEach(p => mergedPdf.addPage(p));
+        }
 
- if(splitMode.value=="odd"){
-  const o=await PDFLib.PDFDocument.create(),e=await PDFLib.PDFDocument.create();
-  for(let i=0;i<total;i++){
-   const [pg]=await o.copyPages(splitDoc,[i]);
-   (i%2==0?o:e).addPage(pg);
-  }
-  zip.file(prefix(num++),await o.save());
-  zip.file(prefix(num++),await e.save());
- }
-
- const blob=await zip.generateAsync({type:"blob"});
- const a=document.createElement("a");
- a.href=URL.createObjectURL(blob);
- a.download="KERALA_GST_SPLIT.zip";
- a.click();
+        const bytes = await mergedPdf.save();
+        download(bytes, "Merged_PDF.pdf");
+        log("✔ Merge completed");
+    } catch (e) {
+        alert(e.message);
+    }
 }
 
-function download(b,n){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([b]));a.download=n;a.click();}
-function show(x){mergeBox.classList.toggle("hidden",x!="merge");splitBox.classList.toggle("hidden",x!="split");document.querySelectorAll(".tab").forEach((t,i)=>t.classList.toggle("active",(x=="merge"&&i==0)||(x=="split"&&i==1)));}
+async function splitPDF() {
+    document.getElementById("log").innerHTML = "";
+    const files = document.getElementById("pdfFiles").files;
+    const password = document.getElementById("pdfPassword").value;
+
+    if (!files.length) {
+        alert("Select PDFs to split");
+        return;
+    }
+
+    const zip = new JSZip();
+
+    try {
+        for (let f = 0; f < files.length; f++) {
+            const pdf = await loadPdf(files[f], password);
+            const pageCount = pdf.getPageCount();
+
+            for (let i = 0; i < pageCount; i++) {
+                const newPdf = await PDFDocument.create();
+                const [page] = await newPdf.copyPages(pdf, [i]);
+                newPdf.addPage(page);
+                const bytes = await newPdf.save();
+                zip.file(`${files[f].name}_page_${i + 1}.pdf`, bytes);
+            }
+        }
+
+        const content = await zip.generateAsync({ type: "blob" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(content);
+        a.download = "Split_PDFs.zip";
+        a.click();
+
+        log("✔ Split completed");
+    } catch (e) {
+        alert(e.message);
+    }
+}
+
+function download(bytes, filename) {
+    const blob = new Blob([bytes], { type: "application/pdf" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+}
 </script>
 </body>
 </html>
-
